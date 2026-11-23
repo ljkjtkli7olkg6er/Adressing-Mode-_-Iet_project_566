@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CPU Addressing Modes Simulator</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --pointer: #f59e0b;
+      --target: #10b981;
+    }
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body {
+      margin: 0; padding: 24px; background: var(--bg); color: var(--text);
+      display: flex; flex-direction: column; align-items: center;
+    }
+    .container { max-width: 1000px; width: 100%; display: grid; gap: 20px; }
+    header {
+      background: var(--panel); padding: 20px; border-radius: 12px;
+      border: 1px solid var(--border); display: flex; justify-content: space-between;
+      align-items: center; flex-wrap: wrap; gap: 12px;
+    }
+    h1 { margin: 0; font-size: 1.35rem; color: var(--accent); }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--panel); padding: 20px; border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+    .card h2 { margin-top: 0; font-size: 1.05rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .form-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+    label { font-size: 0.85rem; color: var(--muted); }
+    select, input[type="number"] {
+      background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      padding: 10px; border-radius: 8px; font-size: 0.95rem;
+    }
+    button {
+      background: var(--accent); color: #0f172a; border: none; padding: 12px 18px;
+      border-radius: 8px; font-weight: 700; cursor: pointer; width: 100%; font-size: 0.95rem;
+    }
+    button:hover { opacity: 0.9; }
+    .reg-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .reg-box {
+      background: var(--bg); padding: 12px; border-radius: 8px; border: 1px solid var(--border);
+    }
+    .reg-box.active { border-color: var(--pointer); box-shadow: 0 0 0 1px var(--pointer); }
+    .reg-box.result { border-color: var(--target); box-shadow: 0 0 0 1px var(--target); }
+    .reg-title { font-size: 0.75rem; color: var(--muted); font-weight: 700; }
+    .reg-val { font-size: 1.3rem; font-family: monospace; margin-top: 4px; }
+    .formula-box {
+      background: var(--bg); padding: 14px; border-radius: 8px; border-left: 4px solid var(--accent);
+      font-family: monospace; font-size: 0.95rem; line-height: 1.6; margin-top: 12px;
+    }
+    .mem-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); gap: 10px;
+    }
+    .mem-cell {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px; text-align: center; transition: 0.2s;
+    }
+    .mem-cell.pointer { border-color: var(--pointer); background: rgba(245, 158, 11, 0.12); }
+    .mem-cell.target { border-color: var(--target); background: rgba(16, 185, 129, 0.15); }
+    .mem-addr { font-size: 0.75rem; color: var(--muted); font-family: monospace; }
+    .mem-input {
+      width: 100%; margin-top: 6px; text-align: center; font-family: monospace;
+      padding: 4px; font-size: 0.95rem;
+    }
+    .legend { display: flex; gap: 16px; font-size: 0.8rem; color: var(--muted); margin-bottom: 12px; }
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>CPU Instruction Addressing Modes Simulator</h1>
+      <span style="font-size: 0.85rem; color: var(--muted);">16-Word Memory Architecture</span>
+    </header>
+
+    <div class="grid-2">
+      <!-- Instruction Control Panel -->
+      <div class="card">
+        <h2>1. Instruction Control Unit</h2>
+        <div class="form-row">
+          <label for="modeSelect">Addressing Mode</label>
+          <select id="modeSelect">
+            <option value="immediate">Immediate Addressing (#Operand)</option>
+            <option value="direct" selected>Direct Addressing ([Operand])</option>
+            <option value="indirect">Indirect Addressing ([[Operand]])</option>
+            <option value="register">Register Addressing (R1)</option>
+            <option value="reg_indirect">Register Indirect Addressing ([R1])</option>
+            <option value="indexed">Indexed Addressing (Operand + XR)</option>
+            <option value="relative">PC-Relative Addressing (PC + Operand)</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="operandInput">Instruction Operand / Offset (0 – 15)</label>
+          <input type="number" id="operandInput" min="0" max="15" value="4" />
+        </div>
+        <button id="execBtn">Execute LOAD Instruction</button>
+
+        <div class="formula-box" id="traceBox">
+          Select a mode and click Execute to inspect Effective Address (EA) calculation.
+        </div>
+      </div>
+
+      <!-- CPU Registers -->
+      <div class="card">
+        <h2>2. CPU Registers (Editable)</h2>
+        <div class="reg-grid">
+          <div class="reg-box" id="box-pc">
+            <div class="reg-title">PC (Program Counter)</div>
+            <input type="number" id="regPC" min="0" max="15" value="2" style="width:100%; margin-top:6px; font-family:monospace;" />
+          </div>
+          <div class="reg-box" id="box-r1">
+            <div class="reg-title">R1 (General Register)</div>
+            <input type="number" id="regR1" min="0" max="15" value="6" style="width:100%; margin-top:6px; font-family:monospace;" />
+          </div>
+          <div class="reg-box" id="box-xr">
+            <div class="reg-title">XR (Index Register)</div>
+            <input type="number" id="regXR" min="0" max="15" value="3" style="width:100%; margin-top:6px; font-family:monospace;" />
+          </div>
+          <div class="reg-box result" id="box-ac">
+            <div class="reg-title">AC (Accumulator Output)</div>
+            <div class="reg-val" id="regAC">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Memory -->
+    <div class="card">
+      <h2>3. Main Memory (Click any value to edit)</h2>
+      <div class="legend">
+        <span><span class="dot" style="background: var(--pointer);"></span>Intermediate Pointer</span>
+        <span><span class="dot" style="background: var(--target);"></span>Effective Address (Target Operand)</span>
+      </div>
+      <div class="mem-grid" id="memGrid"></div>
+    </div>
+  </div>
+
+  <script>
+    const initialMem = [10, 25, 104, 30, 8, 42, 55, 77, 99, 12, 64, 18, 81, 35, 90, 11];
+    const memGrid = document.getElementById("memGrid");
+
+    // Render 16 memory cells
+    initialMem.forEach((val, idx) => {
+      const cell = document.createElement("div");
+      cell.className = "mem-cell";
+      cell.id = `mem-cell-${idx}`;
+      cell.innerHTML = `
+        <div class="mem-addr">Addr 0x${idx.toString(16).toUpperCase().padStart(2, "0")} (${idx})</div>
+        <input class="mem-input" type="number" id="mem-val-${idx}" value="${val}" />
+      `;
+      memGrid.appendChild(cell);
+    });
+
+    function readMem(addr) {
+      const clamped = ((addr % 16) + 16) % 16;
+      return parseInt(document.getElementById(`mem-val-${clamped}`).value, 10) || 0;
+    }
+
+    function clearHighlights() {
+      document.querySelectorAll(".mem-cell").forEach(c => c.classList.remove("pointer", "target"));
+      document.querySelectorAll(".reg-box").forEach(r => r.classList.remove("active"));
+    }
+
+    function execute() {
+      clearHighlights();
+      const mode = document.getElementById("modeSelect").value;
+      const operand = parseInt(document.getElementById("operandInput").value, 10) || 0;
+      const pc = parseInt(document.getElementById("regPC").value, 10) || 0;
+      const r1 = parseInt(document.getElementById("regR1").value, 10) || 0;
+      const xr = parseInt(document.getElementById("regXR").value, 10) || 0;
+
+      let ea = null;
+      let result = 0;
+      let trace = "";
+
+      if (mode === "immediate") {
+        result = operand;
+        trace = `<strong>Mode:</strong> Immediate<br><strong>EA:</strong> None (Operand in IR)<br><strong>AC &larr;</strong> ${operand}`;
+      } else if (mode === "direct") {
+        ea = operand % 16;
+        result = readMem(ea);
+        document.getElementById(`mem-cell-${ea}`).classList.add("target");
+        trace = `<strong>Mode:</strong> Direct<br><strong>EA:</strong> ${ea}<br><strong>AC &larr;</strong> Mem[${ea}] = ${result}`;
+      } else if (mode === "indirect") {
+        const ptrAddr = operand % 16;
+        ea = readMem(ptrAddr) % 16;
+        result = readMem(ea);
+        document.getElementById(`mem-cell-${ptrAddr}`).classList.add("pointer");
+        document.getElementById(`mem-cell-${ea}`).classList.add("target");
+        trace = `<strong>Mode:</strong> Indirect<br><strong>Pointer:</strong> Mem[${ptrAddr}] = ${ea}<br><strong>EA:</strong> ${ea} &rarr; <strong>AC &larr;</strong> Mem[${ea}] = ${result}`;
+      } else if (mode === "register") {
+        result = r1;
+        document.getElementById("box-r1").classList.add("active");
+        trace = `<strong>Mode:</strong> Register<br><strong>EA:</strong> Register R1<br><strong>AC &larr;</strong> R1 = ${result}`;
+      } else if (mode === "reg_indirect") {
+        ea = r1 % 16;
+        result = readMem(ea);
+        document.getElementById("box-r1").classList.add("active");
+        document.getElementById(`mem-cell-${ea}`).classList.add("target");
+        trace = `<strong>Mode:</strong> Register Indirect<br><strong>EA:</strong> R1 = ${ea}<br><strong>AC &larr;</strong> Mem[${ea}] = ${result}`;
+      } else if (mode === "indexed") {
+        ea = (operand + xr) % 16;
+        result = readMem(ea);
+        document.getElementById("box-xr").classList.add("active");
+        document.getElementById(`mem-cell-${ea}`).classList.add("target");
+        trace = `<strong>Mode:</strong> Indexed<br><strong>EA:</strong> Operand (${operand}) + XR (${xr}) = ${ea}<br><strong>AC &larr;</strong> Mem[${ea}] = ${result}`;
+      } else if (mode === "relative") {
+        ea = (pc + operand) % 16;
+        result = readMem(ea);
+        document.getElementById("box-pc").classList.add("active");
+        document.getElementById(`mem-cell-${ea}`).classList.add("target");
+        trace = `<strong>Mode:</strong> PC-Relative<br><strong>EA:</strong> PC (${pc}) + Offset (${operand}) = ${ea}<br><strong>AC &larr;</strong> Mem[${ea}] = ${result}`;
+      }
+
+      document.getElementById("regAC").textContent = result;
+      document.getElementById("traceBox").innerHTML = trace;
+    }
+
+    document.getElementById("execBtn").addEventListener("click", execute);
+    execute();
+  </script>
+</body>
+</html>
